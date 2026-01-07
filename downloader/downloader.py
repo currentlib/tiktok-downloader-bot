@@ -8,6 +8,38 @@ import yt_dlp
 import os
 import uuid
 
+import subprocess
+
+def compress_video(input_path):
+    """
+    Стискає відео, використовуючи ffmpeg.
+    Повертає шлях до нового файлу або None, якщо не вийшло.
+    """
+    output_path = f"{os.path.splitext(input_path)[0]}_compressed.mp4"
+    
+    # CRF 28 - це баланс між якістю і розміром (чим більше число, тим гірша якість і менший розмір)
+    # preset fast - щоб не чекати вічність
+    command = [
+        'ffmpeg', 
+        '-i', input_path, 
+        '-vcodec', 'libx264', 
+        '-crf', '30', 
+        '-preset', 'fast', 
+        '-acodec', 'aac', # Перекодуємо аудіо в aac (стандарт для mp4)
+        output_path
+    ]
+    
+    try:
+        # Запускаємо ffmpeg, приховуючи вивід, щоб не смітив у логи
+        subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        if os.path.exists(output_path):
+            return output_path
+        return None
+    except Exception as e:
+        print(f"Помилка стиснення: {e}")
+        return None
+
 
 def instagram_download(id):
     L = instaloader.Instaloader()
