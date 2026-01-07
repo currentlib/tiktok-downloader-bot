@@ -122,7 +122,6 @@ def handle_tiktok(message):
 
         try:
             file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
-            print(file_size_mb)
             if file_size_mb > 49: # Лишаємо 1 МБ запасу
                 def progress_updater(progress_text):
                     try:
@@ -148,7 +147,6 @@ def handle_tiktok(message):
                     
                     # Перевіряємо розмір після стиснення
                     new_size = os.path.getsize(final_path) / (1024 * 1024)
-                    print(new_size)
                     if new_size > 49:
                         bot.edit_message_text("❌ Навіть після стиснення файл завеликий для Telegram (>50MB).", chat_id=message.chat.id, message_id=status_msg.message_id)
                         return
@@ -156,8 +154,15 @@ def handle_tiktok(message):
                     bot.edit_message_text("❌ Не вдалося стиснути відео.", chat_id=message.chat.id, message_id=status_msg.message_id)
                     return
             bot.edit_message_text("⬆️ Відправляю...", chat_id=message.chat.id, message_id=status_msg.message_id)
+
+            user = message.from_user
+            if user.username:
+                display_name = f"@{user.username}"
+            else:
+                display_name = user.first_name
+
             file_path = data['file_path']
-            caption = f"👤 <b>{data['author']}</b>\n📝 {data['caption']}"
+            caption = f"🤡<b>{display_name}\n🔗<i>{url}</i></b>\n\n👤 <b>{data['author']}</b>\n📝 {data['caption']}"
             
             if len(caption) > 1024:
                 caption = caption[:1000] + "..."
@@ -166,10 +171,10 @@ def handle_tiktok(message):
                     message.chat.id, 
                     video_file, 
                     caption=caption, 
-                    parse_mode="HTML",
-                    reply_to_message_id=message.message_id
+                    parse_mode="HTML"
                 )
             bot.delete_message(message.chat.id, status_msg.message_id)
+            bot.delete_message(message.chat.id, message.message_id)
                 
         except Exception as e:
             print(f"Не вдалося відправити: {e}")
