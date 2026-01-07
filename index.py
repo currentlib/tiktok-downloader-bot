@@ -98,6 +98,7 @@ def handle_twitter(message):
 
 @bot.message_handler(func=is_media_link)
 def handle_tiktok(message):
+    status_msg = None
     try:
         words = message.text.split()
         target_domains = ["tiktok.com", "instagram.com", "x.com", "twitter.com"]
@@ -121,10 +122,25 @@ def handle_tiktok(message):
 
         try:
             file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+            print(file_size_mb)
             if file_size_mb > 49: # Лишаємо 1 МБ запасу
+                def progress_updater(progress_text):
+                    try:
+                        bot.edit_message_text(
+                            f"🐘 Стискаю відео...\n{progress_text}", 
+                            chat_id=message.chat.id, 
+                            message_id=status_msg.message_id
+                        )
+                    except Exception:
+                        pass # Ігноруємо помилки (якщо текст не змінився)
+
                 bot.edit_message_text(f"🐘 Відео велике ({int(file_size_mb)} MB). Стискаю...", chat_id=message.chat.id, message_id=status_msg.message_id)
                 
-                compressed_path = downloader.compress_video(file_path)
+                compressed_path = downloader.compress_video(
+                    file_path, 
+                    total_duration=data.get('duration', 0), 
+                    progress_callback=progress_updater
+                )
                 
                 if compressed_path:
                     final_path = compressed_path
@@ -132,6 +148,7 @@ def handle_tiktok(message):
                     
                     # Перевіряємо розмір після стиснення
                     new_size = os.path.getsize(final_path) / (1024 * 1024)
+                    print(new_size)
                     if new_size > 49:
                         bot.edit_message_text("❌ Навіть після стиснення файл завеликий для Telegram (>50MB).", chat_id=message.chat.id, message_id=status_msg.message_id)
                         return
