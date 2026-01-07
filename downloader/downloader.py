@@ -98,7 +98,7 @@ def compress_video(input_path, total_duration, progress_callback=None):
                 if time.time() - last_update_time > 2 and progress_callback:
                     # Функція render_progressbar має бути десь оголошена
                     bar = "█" * int(percent/10) + "░" * (10 - int(percent/10))
-                    progress_callback(f"[{int(bar)}%]") 
+                    progress_callback(f"[{bar} {str(int(percent))}%]") 
                     last_update_time = time.time()
         # ---------------------------------------------------
 
