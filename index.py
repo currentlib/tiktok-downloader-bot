@@ -111,16 +111,40 @@ def handle_tiktok(message):
         
         
         if data.get("error"):
+            print(f"Помилка: {data['error']}")
             bot.edit_message_text(f"Помилка: {data['error']}", chat_id=message.chat.id, message_id=status_msg.message_id)
             return
 
+        file_path = data['file_path']
+        final_path = file_path # За замовчуванням відправляємо оригінал
+        was_compressed = False
+
         try:
+            file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+            if file_size_mb > 49: # Лишаємо 1 МБ запасу
+                bot.edit_message_text(f"🐘 Відео велике ({int(file_size_mb)} MB). Стискаю...", chat_id=message.chat.id, message_id=status_msg.message_id)
+                
+                compressed_path = downloader.compress_video(file_path)
+                
+                if compressed_path:
+                    final_path = compressed_path
+                    was_compressed = True
+                    
+                    # Перевіряємо розмір після стиснення
+                    new_size = os.path.getsize(final_path) / (1024 * 1024)
+                    if new_size > 49:
+                        bot.edit_message_text("❌ Навіть після стиснення файл завеликий для Telegram (>50MB).", chat_id=message.chat.id, message_id=status_msg.message_id)
+                        return
+                else:
+                    bot.edit_message_text("❌ Не вдалося стиснути відео.", chat_id=message.chat.id, message_id=status_msg.message_id)
+                    return
+            bot.edit_message_text("⬆️ Відправляю...", chat_id=message.chat.id, message_id=status_msg.message_id)
             file_path = data['file_path']
             caption = f"👤 <b>{data['author']}</b>\n📝 {data['caption']}"
             
             if len(caption) > 1024:
                 caption = caption[:1000] + "..."
-            with open(file_path, 'rb') as video_file:
+            with open(final_path, 'rb') as video_file:
                 bot.send_video(
                     message.chat.id, 
                     video_file, 
@@ -128,14 +152,17 @@ def handle_tiktok(message):
                     parse_mode="HTML",
                     reply_to_message_id=message.message_id
                 )
+            bot.delete_message(message.chat.id, status_msg.message_id)
                 
         except Exception as e:
+            print(f"Не вдалося відправити: {e}")
             bot.edit_message_text(f"Не вдалося відправити: {e}", chat_id=message.chat.id, message_id=status_msg.message_id)
             
         finally:
-            bot.delete_message(message.chat.id, status_msg.message_id)
             if data.get('file_path'):
                 downloader.cleanup_file(data['file_path'])
+            if was_compressed and os.path.exists(final_path):
+                os.remove(final_path)
     except Exception as e:
         print(e)
         if status_msg:
