@@ -11,6 +11,8 @@ import uuid
 import subprocess
 import re
 import time
+import shutil
+import glob
 
 def render_progressbar(percent, length=10):
     """Малює смужку: [████░░░░░░] 40%"""
@@ -122,6 +124,94 @@ def instagram_download(id):
                 if chunk:
                     file.write(chunk)
 
+def download_instagram_post(url):
+    # Ініціалізація
+    L = instaloader.Instaloader(
+        download_pictures=True,
+        download_videos=True, 
+        download_video_thumbnails=False,
+        download_geotags=False, 
+        download_comments=False,
+        save_metadata=False,
+        compress_json=False
+    )
+
+    # Витягуємо shortcode (ID поста)
+    # Посилання бувають: /p/CODE/ або /reel/CODE/
+    try:
+        if "/reel/" in url:
+            shortcode = url.split("/reel/")[1].split("/")[0]
+        elif "/p/" in url:
+            shortcode = url.split("/p/")[1].split("/")[0]
+        elif "/tv/" in url:
+            shortcode = url.split("/tv/")[1].split("/")[0]
+        else:
+            # Спробуємо останній сегмент URL, якщо структура інша
+            shortcode = url.strip("/").split("/")[-1]
+    except:
+        return {"error": "Не вдалося знайти ID поста в посиланні"}
+
+    # Папка для завантаження (instaloader завжди качає в папку)
+    target_dir = f"insta_{shortcode}"
+
+    try:
+        # Отримуємо об'єкт поста
+        post = instaloader.Post.from_shortcode(L.context, shortcode)
+        
+        # Скачуємо
+        L.download_post(post, target=target_dir)
+
+        # Збираємо метадані
+        caption = post.caption or "Instagram Post"
+        author = post.owner_username
+        
+        # Скануємо папку на наявність файлів
+        all_files = glob.glob(os.path.join(target_dir, "*"))
+        
+        video_files = [f for f in all_files if f.endswith(".mp4")]
+        image_files = [f for f in all_files if f.endswith(".jpg") or f.endswith(".png")]
+
+        result = {}
+
+        # Сценарій 1: ВІДЕО
+        if video_files:
+            # Instaloader може скачати кілька файлів, беремо найбільший (основне відео)
+            main_video = max(video_files, key=os.path.getsize)
+            result = {
+                "type": "video",
+                "file_path": main_video,
+                "caption": caption,
+                "author": author,
+                "folder_to_delete": target_dir # Важливо: папку треба потім видалити
+            }
+
+        # Сценарій 2: СЛАЙДШОУ (Фото)
+        elif image_files:
+            # Відфільтровуємо тамбнейли відео, якщо вони раптом потрапили
+            valid_images = [img for img in image_files if "_video_thumb" not in img]
+            
+            result = {
+                "type": "photo",
+                "media_group": valid_images,
+                "caption": caption,
+                "author": author,
+                "folder_to_delete": target_dir
+            }
+        else:
+            result = {"error": "Медіа файли не знайдено (можливо це просто текст?)"}
+
+        return result
+
+    except Exception as e:
+        # Якщо сталася помилка, пробуємо видалити папку, щоб не смітити
+        if os.path.exists(target_dir):
+            shutil.rmtree(target_dir, ignore_errors=True)
+        return {"error": f"Insta Error: {str(e)}"}
+
+def cleanup_insta_folder(folder_path):
+    """Видаляє папку з файлами після відправки"""
+    if folder_path and os.path.exists(folder_path):
+        shutil.rmtree(folder_path, ignore_errors=True)
 
 def download_video_local(url: str):
     """
