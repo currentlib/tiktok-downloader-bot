@@ -162,7 +162,7 @@ def handle_tiktok(message):
                 display_name = user.first_name
 
             file_path = data['file_path']
-            caption = f"🤡<b>{display_name}\n🔗<i>{url}</i></b>\n\n👤 <b>{data['author']}</b>\n📝 {data['caption']}"
+            caption = f"<b>{display_name}</b> -- <a href='{url}'>🔗</a>\n<blockquote expandable>📝 {data['caption']}\n[хто побачив, той пісюн]</blockquote>"
             
             if len(caption) > 1024:
                 caption = caption[:1000] + "..."
