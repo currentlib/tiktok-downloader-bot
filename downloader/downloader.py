@@ -137,7 +137,9 @@ def download_video_local(url: str):
         'quiet': True,                         # Менше сміття в логах
         'noplaylist': True,                    # Тільки одне відео, не плейлист
         'merge_output_format': 'mp4',          # Завжди намагатися робити mp4
-        
+        'socket_timeout': 30,    # Чекати відповіді від сервера до 30 секунд
+        'retries': 10,           # Кількість спроб при помилці мережі
+        'fragment_retries': 10,
         # Для TikTok/Insta іноді потрібні хедери, yt-dlp зазвичай справляється,
         # але іноді краще додати user-agent (опціонально)
     }
