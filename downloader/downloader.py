@@ -211,7 +211,7 @@ def download_instagram_post(url):
 def cleanup_insta_folder(folder_path):
     """Видаляє папку з файлами після відправки"""
     if folder_path and os.path.exists(folder_path):
-        shutil.rmtree(folder_path, ignore_errors=True)
+        shutil.rmtree(folder_path, ignore_errors=False)
 
 def download_video_local(url: str):
     """
