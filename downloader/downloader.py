@@ -7,12 +7,24 @@ from asyncio import run
 import yt_dlp
 import os
 import uuid
-
 import subprocess
 import re
 import time
 import shutil
 import glob
+import logging
+
+# Налаштування логування
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('downloader.log', encoding='utf-8'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+import logging
 
 def render_progressbar(percent, length=10):
     """Малює смужку: [████░░░░░░] 40%"""
@@ -157,9 +169,11 @@ def download_instagram_post(url):
     try:
         # Отримуємо об'єкт поста
         post = instaloader.Post.from_shortcode(L.context, shortcode)
+        logger.info(f"Знайдено пост: {shortcode}")
         
         # Скачуємо
         L.download_post(post, target=target_dir)
+        logger.info(f"Пост {shortcode} успішно скачано в папку {target_dir}")
 
         # Збираємо метадані
         caption = post.caption or "Instagram Post"
@@ -167,6 +181,7 @@ def download_instagram_post(url):
         
         # Скануємо папку на наявність файлів
         all_files = glob.glob(os.path.join(target_dir, "*"))
+        logger.info(f"Знайдено файлів: {len(all_files)}")
         
         video_files = [f for f in all_files if f.endswith(".mp4")]
         image_files = [f for f in all_files if f.endswith(".jpg") or f.endswith(".png")]
@@ -184,26 +199,42 @@ def download_instagram_post(url):
                 "author": author,
                 "folder_to_delete": target_dir # Важливо: папку треба потім видалити
             }
+            logger.info(f"Знайдено відео: {main_video}")
 
         # Сценарій 2: СЛАЙДШОУ (Фото)
         elif image_files:
             # Відфільтровуємо тамбнейли відео, якщо вони раптом потрапили
             valid_images = [img for img in image_files if "_video_thumb" not in img]
             
-            result = {
-                "type": "photo",
-                "media_group": valid_images,
-                "caption": caption,
-                "author": author,
-                "folder_to_delete": target_dir
-            }
+            # Якщо всі файли - тамбнейли відео, то це може бути пост з відео, але тільки з тамбнейлом
+            if not valid_images and image_files:
+                # Якщо всі файли - тамбнейли, то це відео з тамбнейлом, повертаємо перший файл
+                result = {
+                    "type": "video",
+                    "file_path": image_files[0],
+                    "caption": caption,
+                    "author": author,
+                    "folder_to_delete": target_dir
+                }
+                logger.info(f"Знайдено відео з тамбнейлом: {image_files[0]}")
+            else:
+                result = {
+                    "type": "photo",
+                    "media_group": valid_images,
+                    "caption": caption,
+                    "author": author,
+                    "folder_to_delete": target_dir
+                }
+                logger.info(f"Знайдено фото слайдшоу: {len(valid_images)} фото")
         else:
             result = {"error": "Медіа файли не знайдено (можливо це просто текст?)"}
+            logger.warning("Медіа файли не знайдено")
 
         return result
 
     except Exception as e:
         # Якщо сталася помилка, пробуємо видалити папку, щоб не смітити
+        logger.error(f"Помилка при скачуванні Instagram поста: {str(e)}")
         if os.path.exists(target_dir):
             shutil.rmtree(target_dir, ignore_errors=True)
         return {"error": f"Insta Error: {str(e)}"}
@@ -211,6 +242,17 @@ def download_instagram_post(url):
 def cleanup_insta_folder(folder_path):
     """Видаляє папку з файлами після відправки"""
     if folder_path and os.path.exists(folder_path):
+        # Спочатку видаляємо всі .txt файли у папці
+        try:
+            txt_files = glob.glob(os.path.join(folder_path, "*.txt"))
+            print(f"Видаляємо .txt файли: {txt_files}")
+            for txt_file in txt_files:
+                print(f"Видаляємо файл: {txt_file}")
+                os.remove(txt_file)
+        except Exception as e:
+            logger.warning(f"Не вдалося видалити .txt файли: {e}")
+        
+        # Потім видаляємо саму папку
         shutil.rmtree(folder_path, ignore_errors=False)
 
 def download_video_local(url: str):
@@ -235,9 +277,11 @@ def download_video_local(url: str):
     }
 
     try:
+        logger.info(f"Починаємо завантаження відео з URL: {url}")
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             # 1. Отримуємо інфо (щоб знати автора і опис)
             info = ydl.extract_info(url, download=True) # download=True зразу качає
+            logger.info(f"Відео успішно завантажено: {info.get('title', 'Без назви')}")
             
             # Отримуємо шлях до скачаного файлу
             # yt-dlp може змінити розширення, тому шукаємо файл
@@ -252,7 +296,7 @@ def download_video_local(url: str):
             full_desc = info.get('description') or info.get('title') or "Без опису"
             author = info.get('uploader') or info.get('uploader_id') or 'Unknown'
             duration = info.get('duration', 0)
-            return {
+            result = {
                 "type": "video",
                 "file_path": downloaded_file,
                 "caption": full_desc,
@@ -260,8 +304,11 @@ def download_video_local(url: str):
                 "duration": duration,
                 "error": None
             }
+            logger.info(f"Підготовлено результат для відео: {downloaded_file}")
+            return result
 
     except Exception as e:
+        logger.error(f"Помилка при завантаженні відео: {str(e)}")
         return {"error": str(e)}
 
 def cleanup_file(path):
