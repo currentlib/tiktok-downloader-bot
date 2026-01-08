@@ -217,6 +217,7 @@ def handle_tiktok(message):
                             media_group.append(InputMediaPhoto(file_handler, caption=cap, parse_mode="HTML"))
                         
                         bot.send_media_group(message.chat.id, media_group, reply_to_message_id=message.message_id)
+                        bot.delete_message(message.chat.id, message.message_id)
                     finally:
                         for f in opened_files:
                             f.close()
