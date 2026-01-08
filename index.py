@@ -1,13 +1,10 @@
 import os
 import telebot
 from telebot.types import InputMediaPhoto, InputMediaVideo
-import re
 from downloader import downloader
 from downloader import speechtotext
 from downloader import ai
 from quote import generate_telegram_message
-import json
-from asyncio import run
 from downloader import x
 import configparser
 import time
@@ -26,7 +23,7 @@ def is_twitter_link(msg):
 def is_media_link(message):
     if not message.text: return False
     text = message.text.lower() 
-    return "tiktok.com/" in text or "instagram.com/" in text or "x.com/" in text or "twitter.com/" in text or "youtube.com/" in text
+    return "tiktok.com/" in text or "instagram.com/" in text or "x.com/" in text or "twitter.com/" in text or "youtube.com/shorts" in text
 
 
 def download_avatar(bot, user_id, save_path):
@@ -97,44 +94,53 @@ def handle_twitter(message):
 
 
 @bot.message_handler(func=is_media_link)
-def handle_tiktok(message):
+def handle_media(message):
     status_msg = None
+    max_retries = config.getint('Downloader', 'max_retries', fallback=3)
     try:
         words = message.text.split()
         target_domains = ["tiktok.com", "instagram.com", "youtube.com"]
         url = next((w for w in words if any(d in w for d in target_domains)), None)
-        is_instagram = "instagram.com" in url
 
         if not url: return
+        is_instagram = "instagram.com" in url
+    except Exception:
+        return
 
-        status_msg = bot.reply_to(message, "🔄 Завантажую ...")
-        print(message.text)
-        if is_instagram:
-            data = downloader.download_instagram_post(url)
-            folder_to_cleanup = data.get('folder_to_delete')
-        else:
-            data = downloader.download_video_local(url)
-            if data.get('type') == 'video':
-                file_to_cleanup = data.get('file_path')
-        
-        
-        if data.get("error"):
-            print(f"Помилка: {data['error']}")
-            bot.edit_message_text(f"Помилка: {data['error']}", chat_id=message.chat.id, message_id=status_msg.message_id)
-            return
+    for attempt in range(max_retries):
+        folder_to_cleanup = None
+        file_to_cleanup = None
+        final_path = None
+        was_compressed = False
 
-        user = message.from_user
-        if user.username:
-            display_name = f"@{user.username}"
-        else:
-            display_name = user.first_name
+        try:
+            if status_msg is None:
+                status_msg = bot.reply_to(message, "🔄 Завантажую ...")
+                print(f"Start: {message.text}")
+            else:
+                try:
+                    bot.edit_message_text(f"🔄 Спроба {attempt + 1} з {max_retries}...", chat_id=message.chat.id, message_id=status_msg.message_id)
+                except Exception: pass
 
-        if data['type'] == "video":
-            file_path = data['file_path']
-            final_path = file_path # За замовчуванням відправляємо оригінал
-            was_compressed = False
+            if is_instagram:
+                data = downloader.download_instagram_post(url)
+                folder_to_cleanup = data.get('folder_to_delete')
+            else:
+                data = downloader.download_video_local(url)
+                if data.get('type') == 'video':
+                    file_to_cleanup = data.get('file_path')
 
-            try:
+            if data.get("error"):
+                print(f"Помилка завантаження: {data['error']}")
+                raise Exception(data['error'])
+
+            user = message.from_user
+            display_name = f"@{user.username}" if user.username else user.first_name
+
+            if data['type'] == "video":
+                file_path = data['file_path']
+                final_path = file_path # За замовчуванням відправляємо оригінал
+
                 file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
                 if file_size_mb > 49: # Лишаємо 1 МБ запасу
                     def progress_updater(progress_text):
@@ -146,33 +152,32 @@ def handle_tiktok(message):
                             )
                         except Exception:
                             pass # Ігноруємо помилки (якщо текст не змінився)
-
+                    time.sleep(1) # Невелика пауза, щоб користувач встиг побачити повідомлення
                     bot.edit_message_text(f"🐘 Відео велике ({int(file_size_mb)} MB). Стискаю...", chat_id=message.chat.id, message_id=status_msg.message_id)
-                    
+                
                     compressed_path = downloader.compress_video(
                         file_path, 
                         total_duration=data.get('duration', 0), 
                         progress_callback=progress_updater
                     )
-                    
+                
                     if compressed_path:
                         final_path = compressed_path
                         was_compressed = True
-                        
-                        # Перевіряємо розмір після стиснення
+                    
+                    # Перевіряємо розмір після стиснення
                         new_size = os.path.getsize(final_path) / (1024 * 1024)
                         if new_size > 49:
-                            bot.edit_message_text("❌ Навіть після стиснення файл завеликий для Telegram (>50MB).", chat_id=message.chat.id, message_id=status_msg.message_id)
-                            return
+                            raise Exception("Файл завеликий навіть після стиснення (>50MB).")
                     else:
-                        bot.edit_message_text("❌ Не вдалося стиснути відео.", chat_id=message.chat.id, message_id=status_msg.message_id)
-                        return
+                        raise Exception("Не вдалося стиснути відео.")
+                
                 bot.edit_message_text("⬆️ Відправляю...", chat_id=message.chat.id, message_id=status_msg.message_id)
 
 
                 file_path = data['file_path']
                 caption = f"<b>{display_name}</b> -- <a href='{url}'>🔗</a>\n<blockquote expandable>📝 {data['caption']}\n</blockquote>"
-                
+            
                 if len(caption) > 1024:
                     caption = caption[:1000] + "..."
                 with open(final_path, 'rb') as video_file:
@@ -183,26 +188,12 @@ def handle_tiktok(message):
                         timeout=120,
                         parse_mode="HTML"
                     )
-                bot.delete_message(message.chat.id, status_msg.message_id)
-                bot.delete_message(message.chat.id, message.message_id)
-                    
-            except Exception as e:
-                print(f"Не вдалося відправити: {e}")
-                bot.edit_message_text(f"Не вдалося відправити: {e}", chat_id=message.chat.id, message_id=status_msg.message_id)
-                
-            finally:
-                if data.get('file_path'):
-                    downloader.cleanup_file(data['file_path'])
-                if was_compressed and os.path.exists(final_path):
-                    os.remove(final_path)
-            pass
-        elif data['type'] == "photo":
-            try:
+
+            elif data['type'] == "photo":
                 bot.edit_message_text("📸 Відправляю фото...", chat_id=message.chat.id, message_id=status_msg.message_id)
-                
                 images = data['media_group']
                 caption = f"<b>{display_name}</b> -- <a href='{url}'>🔗</a>\n<blockquote expandable>📝 {data['caption']}\n</blockquote>"
-                
+            
                 # Розбиваємо на групи по 10
                 chunk_size = 10
                 for i in range(0, len(images), chunk_size):
@@ -222,36 +213,38 @@ def handle_tiktok(message):
                         for f in opened_files:
                             f.close()
 
-                # Видаляємо статус
-                if status_msg:
-                    bot.delete_message(message.chat.id, status_msg.message_id)
-                
-                # Чистка
-                if is_instagram and folder_to_cleanup:
-                    downloader.cleanup_insta_folder(folder_to_cleanup)
-                elif file_to_cleanup and os.path.exists(file_to_cleanup):
-                    os.remove(file_to_cleanup)
-                    
-                return # Успішний вихід
-            except Exception as e:
-                # Обов'язкова чистка при помилці
-                if is_instagram and folder_to_cleanup:
-                    downloader.cleanup_insta_folder(folder_to_cleanup)
-                elif file_to_cleanup and os.path.exists(file_to_cleanup):
-                    os.remove(file_to_cleanup)
+            # Видаляємо статус
+            if status_msg: bot.delete_message(message.chat.id, status_msg.message_id)
+            try: bot.delete_message(message.chat.id, message.message_id)
+            except: pass
+            
+            # Чистка
+            if is_instagram and folder_to_cleanup: downloader.cleanup_insta_folder(folder_to_cleanup)
+            if file_to_cleanup and os.path.exists(file_to_cleanup): os.remove(file_to_cleanup)
+            if was_compressed and final_path and os.path.exists(final_path): os.remove(final_path)
+        
+            return # ВИХІД З ФУНКЦІЇ ПРИ УСПІХУ
 
-                err_text = f"❌ Помилка: {e}"
+        except Exception as e:
+            print(f"Спроба {attempt + 1} провалилась: {e}")
+            # Обов'язкова чистка при помилці
+            # 1. Обов'язкова чистка "сміття" від невдалої спроби
+            if is_instagram and folder_to_cleanup: downloader.cleanup_insta_folder(folder_to_cleanup)
+            elif file_to_cleanup and os.path.exists(file_to_cleanup): os.remove(file_to_cleanup)
+            if was_compressed and final_path and os.path.exists(final_path): os.remove(final_path)
+
+            # 2. Перевірка чи це остання спроба
+            if attempt == max_retries - 1:
+                # Все пропало
+                err_text = f"❌ Не вдалося після {max_retries} спроб.\nПомилка: {e}"
                 if status_msg:
                     bot.edit_message_text(err_text, chat_id=message.chat.id, message_id=status_msg.message_id)
                 else:
                     bot.send_message(message.chat.id, err_text, reply_to_message_id=message.message_id)
-    except Exception as e:
-        print(e)
-        if status_msg:
-            bot.edit_message_text(f"Щось пішло не так. Спробуй ще раз, може спрацює.", chat_id=message.chat.id, message_id=status_msg.message_id)
-        else:
-            bot.send_message(chat_id=message.chat.id, reply_to_message_id=message.message_id, text="Щось пішло не так. Спробуй ще раз, може спрацює.")
-
+            else:
+                # Чекаємо перед наступною спробою
+                time.sleep(3) 
+                continue # Йдемо на наступну ітерацію циклу
 
 @bot.message_handler(content_types=['voice'])
 def process_audio(message):

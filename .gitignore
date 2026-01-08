@@ -2,3 +2,8 @@ __pycache__
 downloader/__pycache__
 _model
 config.ini
+downloader.log
+.github/agents
+.venv
+venv
+_ai.py
