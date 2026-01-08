@@ -74,7 +74,7 @@ def handle_twitter(message):
             # Одне фото або відео
             link = media_files[0]
             if ".mp4" in link:
-                bot.send_video(message.chat.id, link, caption=caption, parse_mode="HTML", reply_to_message_id=message.message_id)
+                bot.send_video(message.chat.id, link, caption=caption, parse_mode="HTML", reply_to_message_id=message.message_id, timeout=120)
             else:
                 bot.send_photo(message.chat.id, link, caption=caption, parse_mode="HTML", reply_to_message_id=message.message_id)
         
@@ -170,7 +170,8 @@ def handle_tiktok(message):
                 bot.send_video(
                     message.chat.id, 
                     video_file, 
-                    caption=caption, 
+                    caption=caption,
+                    timeout=120,
                     parse_mode="HTML"
                 )
             bot.delete_message(message.chat.id, status_msg.message_id)
