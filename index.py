@@ -208,11 +208,18 @@ def handle_tiktok(message):
                 for i in range(0, len(images), chunk_size):
                     chunk = images[i:i + chunk_size]
                     media_group = []
-                    for index, img_path in enumerate(chunk):
-                        cap = caption if i == 0 and index == 0 else ""
-                        media_group.append(InputMediaPhoto(open(img_path, 'rb'), caption=cap, parse_mode="HTML"))
-                    
-                    bot.send_media_group(message.chat.id, media_group, reply_to_message_id=message.message_id)
+                    opened_files = []
+                    try:
+                        for index, img_path in enumerate(chunk):
+                            cap = caption if i == 0 and index == 0 else ""
+                            file_handler = open(img_path, 'rb')
+                            opened_files.append(file_handler) # Запам'ятовуємо, щоб потім закрити
+                            media_group.append(InputMediaPhoto(file_handler, caption=cap, parse_mode="HTML"))
+                        
+                        bot.send_media_group(message.chat.id, media_group, reply_to_message_id=message.message_id)
+                    finally:
+                        for f in opened_files:
+                            f.close()
 
                 # Видаляємо статус
                 if status_msg:
