@@ -1,159 +1,201 @@
 import sqlite3
+import time
+import io
 import re
 from collections import Counter
-from datetime import datetime, timedelta
-import time
-import threading
+import matplotlib
+# Встановлюємо бекенд 'Agg' одразу, щоб уникнути помилок GUI в Docker
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+from wordcloud import WordCloud
 
-class StatsManager:
-    def __init__(self, db_name="chat_stats.db"):
-        self.db_name = db_name
-        self._init_db()
+# --- Налаштування ---
+DB_NAME = "bot_database.db"
+STOP_WORDS = {
+    # Українська
+    'і', 'й', 'та', 'на', 'що', 'як', 'це', 'для', 'не', 'але', 'до', 'в', 'у', 'з', 'зі', 
+    'він', 'вона', 'воно', 'вони', 'ми', 'ви', 'ти', 'я', 'про', 'за', 'по', 'так', 'ні',
+    # Англійська
+    'the', 'and', 'to', 'of', 'a', 'in', 'is', 'that', 'for', 'it', 'on', 'with', 'as', 'this', 'by', 'at', 'an', 'be', 'are', 'from', 'or', 'not'
+}
 
-    def _init_db(self):
-        """Ініціалізація БД, якщо її не існує"""
-        with sqlite3.connect(self.db_name) as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS messages (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT NOT NULL,
-                    message_text TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+def init_db():
+    """Ініціалізує базу даних та проводить міграцію, якщо потрібно."""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    
+    # 1. Створення таблиці (якщо її немає)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS daily_stats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            chat_id INTEGER,
+            username TEXT,
+            first_name TEXT,
+            message_text TEXT,
+            timestamp REAL
+        )
+    ''')
+    
+    # 2. Міграція: перевіряємо, чи є колонка chat_id у старих базах
+    cursor.execute("PRAGMA table_info(daily_stats)")
+    columns = [info[1] for info in cursor.fetchall()]
+    
+    if 'chat_id' not in columns:
+        print("⚠️ Виявлено стару схему БД. Додаю колонку chat_id...")
+        try:
+            cursor.execute("ALTER TABLE daily_stats ADD COLUMN chat_id INTEGER")
+            conn.commit()
+            print("✅ БД успішно оновлено.")
+        except Exception as e:
+            print(f"❌ Помилка міграції БД: {e}")
+
+    conn.commit()
+    conn.close()
+
+def log_message_middleware(bot, message):
+    """
+    Мідлвар для збереження кожного текстового повідомлення.
+    """
+    if message.content_type != 'text':
+        return
+
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        
+        # Безпечне отримання даних
+        u_id = message.from_user.id
+        c_id = message.chat.id  # <--- Зберігаємо ID чату
+        u_name = message.from_user.username or ""
+        f_name = message.from_user.first_name or ""
+        text = message.text or ""
+        ts = time.time()
+
+        cursor.execute('''
+            INSERT INTO daily_stats (user_id, chat_id, username, first_name, message_text, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (u_id, c_id, u_name, f_name, text, ts))
+        
+        conn.commit()
+    except Exception as e:
+        print(f"Помилка логування повідомлення: {e}")
+    finally:
+        if conn:
+            conn.close()
+
+def get_daily_stats(target_chat_id):
+    """
+    Аналізує повідомлення за останні 24 години ДЛЯ КОНКРЕТНОГО ЧАТУ.
+    """
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    
+    cutoff_time = time.time() - (24 * 60 * 60)
+    
+    # Фільтруємо по timestamp ТА по chat_id
+    cursor.execute('''
+        SELECT user_id, username, first_name, message_text 
+        FROM daily_stats 
+        WHERE timestamp > ? AND chat_id = ?
+    ''', (cutoff_time, target_chat_id))
+    
+    rows = cursor.fetchall()
+    conn.close()
+
+    if not rows:
+        return "📉 У цьому чаті за останні 24 години повідомлень не знайдено.", None
+
+    # --- 1. Логіка Топ користувачів ---
+    user_counts = Counter()
+    user_names = {} 
+
+    all_text = []
+
+    for r in rows:
+        uid, uname, fname, text = r
+        user_counts[uid] += 1
+        
+        if uid not in user_names:
+            user_names[uid] = f"@{uname}" if uname else fname
+        
+        all_text.append(text)
+
+    top_3 = user_counts.most_common(3)
+    
+    stats_msg = "📊 <b>Статистика чату за 24 години:</b>\n\n"
+    stats_msg += "🏆 <b>Найактивніші:</b>\n"
+    for idx, (uid, count) in enumerate(top_3, 1):
+        name = user_names.get(uid, "Unknown")
+        stats_msg += f"{idx}. {name} — {count} повідомлень\n"
+
+    # --- 2. Логіка Хмари Слів ---
+    full_text = " ".join(all_text)
+    
+    # Регулярка для слів (кирилиця + латиниця + цифри)
+    tokens = re.findall(r'[a-zA-Zа-яА-ЯїієґЇІЄҐ0-9]+', full_text.lower())
+    
+    cleaned_tokens = [w for w in tokens if w not in STOP_WORDS and len(w) > 2]
+    
+    img_buffer = None
+    
+    if len(cleaned_tokens) > 5:
+        try:
+            cleaned_text = " ".join(cleaned_tokens)
+            
+            wc = WordCloud(
+                width=800, 
+                height=400, 
+                background_color='white',
+                regexp=r"[a-zA-Zа-яА-ЯїієґЇІЄҐ0-9]+" 
+            ).generate(cleaned_text)
+
+            plt.figure(figsize=(10, 5))
+            plt.imshow(wc, interpolation='bilinear')
+            plt.axis('off')
+            
+            img_buffer = io.BytesIO()
+            plt.savefig(img_buffer, format='png', bbox_inches='tight')
+            img_buffer.seek(0)
+            plt.close()
+        except Exception as e:
+            print(f"WordCloud generation failed: {e}")
+            stats_msg += "\n⚠️ Не вдалося створити хмару слів."
+    else:
+        stats_msg += "\n📝 Недостатньо слів для генерації хмари."
+
+    return stats_msg, img_buffer
+
+# --- Інтеграція ---
+def register_stats_handlers(bot):
+    init_db()
+
+    @bot.middleware_handler(update_types=['message'])
+    def middleware_logger(bot_instance, message):
+        log_message_middleware(bot_instance, message)
+
+    @bot.message_handler(commands=['stats'])
+    def handle_stats(message):
+        status_msg = bot.send_message(message.chat.id, "🔄 Рахую статистику чату...")
+        
+        try:
+            # Передаємо message.chat.id, щоб отримати статистику саме цього чату
+            text_response, photo_file = get_daily_stats(message.chat.id)
+            
+            bot.delete_message(message.chat.id, status_msg.message_id)
+            
+            if photo_file:
+                bot.send_photo(
+                    message.chat.id, 
+                    photo_file, 
+                    caption=text_response, 
+                    parse_mode="HTML"
                 )
-            ''')
-            conn.commit()
-
-    def log_message(self, username, text):
-        """Цю функцію треба викликати кожного разу, коли приходить повідомлення"""
-        with sqlite3.connect(self.db_name) as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "INSERT INTO messages (username, message_text) VALUES (?, ?)",
-                (username, text)
-            )
-            conn.commit()
-
-    def get_daily_stats(self):
-        """Генерує звіт за останні 24 години"""
-        # Визначаємо часовий проміжок (останні 24 години)
-        yesterday = datetime.now() - timedelta(days=1)
-        
-        with sqlite3.connect(self.db_name) as conn:
-            cursor = conn.cursor()
-            
-            # 1. Отримуємо повідомлення тільки за останню добу
-            cursor.execute(
-                "SELECT username, message_text FROM messages WHERE created_at > ?", 
-                (yesterday,)
-            )
-            data = cursor.fetchall()
-
-        if not data:
-            return None # Повідомлень не було
-
-        # Обробка даних
-        users = [row[0] for row in data]
-        texts = [row[1] for row in data]
-        total_messages = len(data)
-
-        # Статистика: Топ юзерів
-        top_users = Counter(users).most_common(3)
-
-        # Статистика: Хмара слів (проста версія)
-        all_text = " ".join(texts).lower()
-        # Прибираємо спецсимволи і лишаємо тільки слова
-        words = re.findall(r'\b\w+\b', all_text)
-        
-        # Список стоп-слів (щоб не рахувати прийменники)
-        stop_words = {'і', 'та', 'а', 'але', 'що', 'як', 'це', 'в', 'на', 'до', 'з', 'не', 'я', 'ти', 'він'}
-        filtered_words = [w for w in words if w not in stop_words and len(w) > 3]
-        top_words = Counter(filtered_words).most_common(5)
-
-        return {
-            "total": total_messages,
-            "top_users": top_users,
-            "top_words": top_words
-        }
-
-    def format_report(self, stats):
-        """Перетворює словник зі статистикою у гарний текст"""
-        if not stats:
-            return "Сьогодні в чаті була тиша... 🦗"
-
-        report = f"📊 **Щоденна статистика чату**\n\n"
-        report += f"💬 Всього повідомлень: {stats['total']}\n\n"
-        
-        report += "🏆 **Найактивніші балакуни:**\n"
-        for idx, (user, count) in enumerate(stats['top_users'], 1):
-            report += f"{idx}. {user} — {count} повідомлень\n"
-        
-        report += "\n🗣 **Слова дня:**\n"
-        words_str = ", ".join([f"{w} ({c})" for w, c in stats['top_words']])
-        report += words_str if words_str else "Замало даних для слів."
-
-        return report
-
-# --- Налаштування Планувальника (Scheduler) ---
-
-def schedule_runner(stats_manager, send_callback, target_hour=9, target_minute=0):
-    """
-    Фоновий процес, який перевіряє час кожну хвилину.
-    send_callback — це функція вашого бота, яка відправляє повідомлення в чат.
-    """
-    while True:
-        now = datetime.now()
-        # Перевіряємо, чи настав час (наприклад, 09:00)
-        if now.hour == target_hour and now.minute == target_minute:
-            
-            # 1. Генеруємо звіт
-            stats = stats_manager.get_daily_stats()
-            text_report = stats_manager.format_report(stats)
-            
-            # 2. Відправляємо в чат (через callback)
-            send_callback(text_report)
-            
-            # 3. Чекаємо 61 секунду, щоб не відправити двічі за одну хвилину
-            time.sleep(61)
-        else:
-            # Перевіряємо раз на 30 секунд
-            time.sleep(30)
-
-# --- Приклад використання (Імітація бота) ---
-
-# 1. Ініціалізація
-stats_db = StatsManager()
-
-# 2. Функція відправки (заміни її на реальний bot.send_message)
-def mock_send_to_chat(text):
-    print("\n--- [BOT SENDS MESSAGE] ---")
-    print(text)
-    print("---------------------------\n")
-
-# 3. Запуск планувальника в окремому потоці (щоб бот не завис)
-# Встановимо час на хвилину вперед від поточного для тесту
-current_time = datetime.now()
-sched_thread = threading.Thread(
-    target=schedule_runner, 
-    args=(stats_db, mock_send_to_chat, current_time.hour, current_time.minute + 1) # +1 хвилина для тесту
-)
-sched_thread.daemon = True # Потік закриється разом з основною програмою
-sched_thread.start()
-
-# 4. Імітація роботи бота (прийом повідомлень)
-print("Бот запущено. Пишіть повідомлення (імітація)...")
-
-# Імітуємо активність
-stats_db.log_message("@alex", "Всім привіт, як справи?")
-stats_db.log_message("@maria", "Привіт! Чудово, а в тебе?")
-stats_db.log_message("@alex", "Та теж нічого, працюю над ботом")
-stats_db.log_message("@ivan", "О, що за бот? Розкажи детальніше")
-stats_db.log_message("@alex", "Бот для статистики. Статистика це круто")
-stats_db.log_message("@alex", "Статистика статистика статистика") # Накручуємо слово
-
-# Щоб скрипт не завершився одразу (у реальному боті тут `bot.polling()`)
-try:
-    while True:
-        time.sleep(1)
-except KeyboardInterrupt:
-    print("Бот зупинено.")
+            else:
+                bot.send_message(
+                    message.chat.id, 
+                    text_response, 
+                    parse_mode="HTML"
+                )
+        except Exception as e:
+            bot.edit_message_text(f"Помилка: {e}", chat_id=message.chat.id, message_id=status_msg.message_id)

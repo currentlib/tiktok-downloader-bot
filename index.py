@@ -8,13 +8,19 @@ from quote import generate_telegram_message
 from downloader import x
 import configparser
 import time
+from downloader import stats
+from telebot import apihelper
 
 config = configparser.ConfigParser()
 config.read('config.ini')
 
+apihelper.ENABLE_MIDDLEWARE = True
+
 BOT_TOKEN = config['Telegram']['Token']
 bot = telebot.TeleBot(BOT_TOKEN)
 bot.set_webhook()
+
+stats.register_stats_handlers(bot)
 
 def is_twitter_link(msg):
     if not msg.text: return False
@@ -57,8 +63,10 @@ def handle_twitter(message):
     if data.get("error"):
         bot.edit_message_text(f"Помилка: {data['error']}", chat_id=message.chat.id, message_id=status_msg.message_id)
         return
-    
-    caption = f"👤 <b>{data['author']}</b>:\n\n{data['text']}"
+    caption = data.get('caption', '')
+    if len(caption) > 800:
+        caption = caption[:800] + "..."
+    caption = f"👤 <b>{data['author']}</b>:\n\n{caption}"
     bot.delete_message(message.chat.id, status_msg.message_id)
     try:
         media_files = data['media']
@@ -176,10 +184,11 @@ def handle_media(message):
 
 
                 file_path = data['file_path']
-                caption = f"<b>{display_name}</b> -- <a href='{url}'>🔗</a>\n<blockquote expandable>📝 {data['caption']}\n</blockquote>"
+                caption = data.get('caption', '')
+                if len(caption) > 800:
+                    caption = caption[:800] + "..."
+                caption = f"<b>{display_name}</b> -- <a href='{url}'>🔗</a>\n<blockquote expandable>📝 {caption}\n</blockquote>"
             
-                if len(caption) > 1024:
-                    caption = caption[:1000] + "..."
                 with open(final_path, 'rb') as video_file:
                     bot.send_video(
                         message.chat.id, 
@@ -192,7 +201,10 @@ def handle_media(message):
             elif data['type'] == "photo":
                 bot.edit_message_text("📸 Відправляю фото...", chat_id=message.chat.id, message_id=status_msg.message_id)
                 images = data['media_group']
-                caption = f"<b>{display_name}</b> -- <a href='{url}'>🔗</a>\n<blockquote expandable>📝 {data['caption']}\n</blockquote>"
+                caption = data.get('caption', '')
+                if len(caption) > 800:
+                    caption = caption[:800] + "..."
+                caption = f"<b>{display_name}</b> -- <a href='{url}'>🔗</a>\n<blockquote expandable>📝 {caption}\n</blockquote>"
             
                 # Розбиваємо на групи по 10
                 chunk_size = 10
