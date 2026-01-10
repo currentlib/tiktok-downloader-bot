@@ -13,6 +13,10 @@ import time
 import shutil
 import glob
 import logging
+from pathlib import Path
+
+ARTIFACTS_DIR = Path("artifacts")
+
 
 # Налаштування логування
 logging.basicConfig(
@@ -164,7 +168,7 @@ def download_instagram_post(url):
         return {"error": "Не вдалося знайти ID поста в посиланні"}
 
     # Папка для завантаження (instaloader завжди качає в папку)
-    target_dir = f"insta_{shortcode}"
+    target_dir = ARTIFACTS_DIR / f"insta_{shortcode}"
 
     try:
         # Отримуємо об'єкт поста
@@ -260,12 +264,13 @@ def download_video_local(url: str):
     Скачує відео локально за допомогою yt-dlp.
     Повертає словник з шляхом до файлу та описом.
     """
+
     # Генеруємо унікальне ім'я файлу, щоб уникнути конфліктів при одночасному скачуванні
     filename = f"download_{uuid.uuid4().hex}"
     
     ydl_opts = {
         'format': 'bestvideo+bestaudio/best',  # Найкраща якість
-        'outtmpl': f'{filename}.%(ext)s',     # Шаблон імені файлу
+        'outtmpl': f'{ARTIFACTS_DIR}/{filename}.%(ext)s',     # Шаблон імені файлу
         'quiet': True,                         # Менше сміття в логах
         'noplaylist': True,                    # Тільки одне відео, не плейлист
         'merge_output_format': 'mp4',          # Завжди намагатися робити mp4
