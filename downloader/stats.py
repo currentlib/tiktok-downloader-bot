@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 from wordcloud import WordCloud
 
 # --- Налаштування ---
-DB_NAME = "bot_database.db"
+DB_NAME = "artifacts/bot_database.db"
 STOP_WORDS = {
     # Українська
     'і', 'й', 'та', 'на', 'що', 'як', 'це', 'для', 'не', 'але', 'до', 'в', 'у', 'з', 'зі', 
