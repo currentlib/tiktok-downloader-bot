@@ -9,7 +9,7 @@ config.read('config.ini')
 def get_ai_client():
     try:
         # Check if Ollama is available and has a model
-        response = requests.get('http://10.42.0.182:11434/api/tags', timeout=5)
+        response = requests.get(f'http://{config["Ollama"]["Host"]}:{config["Ollama"]["Port"]}/api/tags', timeout=5)
         if response.status_code == 200:
             # Ollama is available, return a simple client that uses Ollama API
             return "ollama"
@@ -54,7 +54,7 @@ def ai_stream(msg):
             # Send request to Ollama
             ollama_prompt = f"{prompt}\n\nUser: {msg}"
             response = requests.post(
-                'http://localhost:11434/api/generate',
+                f'http://{config["Ollama"]["Host"]}:{config["Ollama"]["Port"]}/api/generate',
                 json={
                     "model": "gemma3:4b",  # Default model, can be configured
                     "prompt": ollama_prompt,
