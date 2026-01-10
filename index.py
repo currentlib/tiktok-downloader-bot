@@ -326,10 +326,10 @@ def handle_grok(message):
             reply_to_message_id=message.message_id, 
             text="⏳ Думаю ..."
         )
-
+        time.sleep(1.5)  # Невелика пауза, щоб користувач встиг побачити повідомлення
         full_response = ""
         last_update_time = time.time()
-        update_interval = 1 
+        update_interval = 1.5  # Оновлюємо повідомлення не частіше ніж раз на 1.5 секунди
 
         for chunk in ai.ai_stream(user_input):
             full_response += chunk
