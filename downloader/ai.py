@@ -37,7 +37,7 @@ def ai_stream(msg):
     if client_type == "openai":
         # Use OpenAI as before
         stream = client.chat.completions.create(
-            model="gpt-5-nano-2025-08-07",
+            model=config['OpenAI']['Model'],
             messages=[
                 {"role": "developer", "content": prompt},
                 {"role": "user", "content": msg}
@@ -56,7 +56,7 @@ def ai_stream(msg):
             response = requests.post(
                 f'http://{config["Ollama"]["Host"]}:{config["Ollama"]["Port"]}/api/generate',
                 json={
-                    "model": "gemma3:4b",  # Default model, can be configured
+                    "model": config["Ollama"]["Model"],  # Default model, can be configured
                     "prompt": ollama_prompt,
                     "stream": True
                 },
