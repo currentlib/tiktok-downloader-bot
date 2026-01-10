@@ -79,9 +79,9 @@ def handle_twitter(message):
             # Одне фото або відео
             link = media_files[0]
             if ".mp4" in link:
-                bot.send_video(message.chat.id, link, caption=caption, parse_mode="HTML", reply_to_message_id=message.message_id, timeout=120)
+                bot.send_video(message.chat.id, link, caption=caption, parse_mode="HTML", reply_to_message_id=message.message_id, timeout=120, supports_streaming=True)
             else:
-                bot.send_photo(message.chat.id, link, caption=caption, parse_mode="HTML", reply_to_message_id=message.message_id)
+                bot.send_photo(message.chat.id, link, caption=caption, parse_mode="HTML", reply_to_message_id=message.message_id, timeout=120)
         
         else:
             # Група медіа (альбом)
@@ -95,7 +95,7 @@ def handle_twitter(message):
                 else:
                     media_group.append(InputMediaPhoto(link, caption=cap, parse_mode="HTML"))
             
-            bot.send_media_group(message.chat.id, media_group, reply_to_message_id=message.message_id)
+            bot.send_media_group(message.chat.id, media_group, reply_to_message_id=message.message_id, timeout=120)
 
     except Exception as e:
         bot.send_message(message.chat.id, f"Не вдалося відправити медіа: {e}")
@@ -195,7 +195,8 @@ def handle_media(message):
                         video_file, 
                         caption=caption,
                         timeout=120,
-                        parse_mode="HTML"
+                        parse_mode="HTML",
+                        supports_streaming=True
                     )
 
             elif data['type'] == "photo":
