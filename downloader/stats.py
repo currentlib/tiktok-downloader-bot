@@ -131,9 +131,10 @@ def get_daily_stats(target_chat_id):
 
     # --- 2. Логіка Хмари Слів ---
     full_text = " ".join(all_text)
-    
+    full_text = re.sub(r'https?://\S+|www\.\S+', '', full_text)  # Видаляємо посилання
+    full_text = re.sub(r'[@#]\S+', '', full_text)  # Видаляємо згадки та хештеги
     # Регулярка для слів (кирилиця + латиниця + цифри)
-    tokens = re.findall(r'[a-zA-Zа-яА-ЯїієґЇІЄҐ0-9]+', full_text.lower())
+    tokens = re.findall(r'[a-zA-Zа-яА-ЯїієґЇІЄҐ]+', full_text.lower())
     
     cleaned_tokens = [w for w in tokens if w not in STOP_WORDS and len(w) > 2]
     
@@ -147,7 +148,7 @@ def get_daily_stats(target_chat_id):
                 width=800, 
                 height=400, 
                 background_color='white',
-                regexp=r"[a-zA-Zа-яА-ЯїієґЇІЄҐ0-9]+" 
+                regexp=r"[a-zA-Zа-яА-ЯїієґЇІЄҐ]+" 
             ).generate(cleaned_text)
 
             plt.figure(figsize=(10, 5))
