@@ -7,3 +7,9 @@ downloader.log
 .venv
 venv
 _ai.py
+*.db
+*.ogg
+*.jpg
+*.jpeg
+*.png
+*.mp4
