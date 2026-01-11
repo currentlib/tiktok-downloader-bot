@@ -1,6 +1,9 @@
 import configparser
 import requests
 from openai import OpenAI
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', filename='artifacts/bot.log', filemode='a')
 
 config = configparser.ConfigParser()
 config.read('config.ini')
@@ -79,7 +82,7 @@ def ai_stream(msg):
                         
         except Exception as e:
             # If Ollama fails, fall back to OpenAI
-            print(f"Ollama failed, falling back to OpenAI: {e}")
+            logging.error(f"Ollama failed, falling back to OpenAI: {e}")
             # Re-initialize OpenAI client
             fallback_client = OpenAI(
                 api_key=config['OpenAI']['ApiKey']

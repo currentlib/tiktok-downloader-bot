@@ -8,6 +8,9 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from wordcloud import WordCloud
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', filename='artifacts/bot.log', filemode='a')
 
 # --- Налаштування ---
 DB_NAME = "artifacts/bot_database.db"
@@ -42,13 +45,13 @@ def init_db():
     columns = [info[1] for info in cursor.fetchall()]
     
     if 'chat_id' not in columns:
-        print("⚠️ Виявлено стару схему БД. Додаю колонку chat_id...")
+        logging.warning("⚠️ Виявлено стару схему БД. Додаю колонку chat_id...")
         try:
             cursor.execute("ALTER TABLE daily_stats ADD COLUMN chat_id INTEGER")
             conn.commit()
-            print("✅ БД успішно оновлено.")
+            logging.info("✅ БД успішно оновлено.")
         except Exception as e:
-            print(f"❌ Помилка міграції БД: {e}")
+            logging.error(f"❌ Помилка міграції БД: {e}")
 
     conn.commit()
     conn.close()
@@ -79,7 +82,7 @@ def log_message_middleware(bot, message):
         
         conn.commit()
     except Exception as e:
-        print(f"Помилка логування повідомлення: {e}")
+        logging.error(f"Помилка логування повідомлення: {e}")
     finally:
         if conn:
             conn.close()
@@ -160,7 +163,7 @@ def get_daily_stats(target_chat_id):
             img_buffer.seek(0)
             plt.close()
         except Exception as e:
-            print(f"WordCloud generation failed: {e}")
+            logging.error(f"WordCloud generation failed: {e}")
             stats_msg += "\n⚠️ Не вдалося створити хмару слів."
     else:
         stats_msg += "\n📝 Недостатньо слів для генерації хмари."
