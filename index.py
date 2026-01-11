@@ -10,6 +10,9 @@ import configparser
 import time
 from downloader import stats
 from telebot import apihelper
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', filename='artifacts/bot.log', filemode='a')
 
 config = configparser.ConfigParser()
 config.read('config.ini')
@@ -45,7 +48,7 @@ def download_avatar(bot, user_id, save_path):
         else:
             return False
     except Exception as e:
-        print(f"Error downloading avatar: {e}")
+        logging.error(f"Error downloading avatar: {e}")
         return False
 
 
@@ -124,7 +127,7 @@ def handle_media(message):
         try:
             if status_msg is None:
                 status_msg = bot.reply_to(message, "🔄 Завантажую ...")
-                print(f"Start: {message.text}")
+                logging.info(f"Start: {message.text}")
             else:
                 try:
                     bot.edit_message_text(f"🔄 Спроба {attempt + 1} з {max_retries}...", chat_id=message.chat.id, message_id=status_msg.message_id)
@@ -139,7 +142,7 @@ def handle_media(message):
                     file_to_cleanup = data.get('file_path')
 
             if data.get("error"):
-                print(f"Помилка завантаження: {data['error']}")
+                logging.error(f"Помилка завантаження: {data['error']}")
                 raise Exception(data['error'])
 
             user = message.from_user
@@ -239,7 +242,7 @@ def handle_media(message):
             return # ВИХІД З ФУНКЦІЇ ПРИ УСПІХУ
 
         except Exception as e:
-            print(f"Спроба {attempt + 1} провалилась: {e}")
+            logging.error(f"Спроба {attempt + 1} провалилась: {e}")
             # Обов'язкова чистка при помилці
             # 1. Обов'язкова чистка "сміття" від невдалої спроби
             if is_instagram and folder_to_cleanup: downloader.cleanup_insta_folder(folder_to_cleanup)
@@ -303,7 +306,7 @@ def process_audio(message):
             text=f"🗣 {full_text}"
         )
     except Exception as e:
-        print(e)
+        logging.error(f"Error processing audio: {e}")
         if status_msg:
             bot.edit_message_text("Помилка обробки аудіо.", chat_id=message.chat.id, message_id=status_msg.message_id)
         else:
@@ -345,6 +348,7 @@ def handle_grok(message):
                     last_update_time = time.time()
                 except Exception:
                     pass
+        time.sleep(1.5)
         bot.edit_message_text(
             chat_id=message.chat.id,
             message_id=sent_message.message_id,
@@ -353,7 +357,7 @@ def handle_grok(message):
         )
 
     except Exception as e:
-        print(f"Error: {e}")
+        logging.error(f"Error in handle_grok: {e}")
         bot.send_message(message.chat.id, f"Щось пішло не так: {e}")
 
 

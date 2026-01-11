@@ -1,0 +1,13 @@
+2026-01-11 11:53:33,369 - INFO - Test log message
+2026-01-11 11:58:30,373 - root - INFO - Start: https://vm.tiktok.com/ZMDr4FPmX/
+2026-01-11 11:58:30,373 - downloader.downloader - INFO - Починаємо завантаження відео з URL: https://vm.tiktok.com/ZMDr4FPmX/
+2026-01-11 11:58:32,230 - downloader.downloader - INFO - Відео успішно завантажено: 😭😭😭😭
+2026-01-11 11:58:32,230 - downloader.downloader - INFO - Підготовлено результат для відео: artifacts\download_411867b4889540c0bbaacfd14758d3d9.mp4
+2026-01-11 11:59:08,326 - root - INFO - Start: https://www.instagram.com/reel/DTUzslMEvwP/?igsh=MWF4dzFhNmpwNWJqaA==
+2026-01-11 11:59:11,662 - downloader.downloader - INFO - Знайдено пост: DTUzslMEvwP
+2026-01-11 11:59:11,751 - downloader.downloader - INFO - Пост DTUzslMEvwP успішно скачано в папку artifacts\insta_DTUzslMEvwP
+2026-01-11 11:59:11,751 - downloader.downloader - INFO - Знайдено файлів: 2
+2026-01-11 11:59:11,751 - downloader.downloader - INFO - Знайдено відео: artifacts\insta_DTUzslMEvwP\2026-01-10_09-27-57_UTC.mp4
+2026-01-11 11:59:12,329 - downloader.downloader - INFO - Видаляємо .txt файли: ['artifacts\\insta_DTUzslMEvwP\\2026-01-10_09-27-57_UTC.txt']
+2026-01-11 11:59:12,329 - downloader.downloader - INFO - Видаляємо файл: artifacts\insta_DTUzslMEvwP\2026-01-10_09-27-57_UTC.txt
+2026-01-11 11:59:31,308 - TeleBot - ERROR - Break infinity polling

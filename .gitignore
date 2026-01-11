@@ -13,3 +13,5 @@ _ai.py
 *.jpeg
 *.png
 *.mp4
+artifacts/
+*.log

@@ -23,12 +23,11 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('downloader.log', encoding='utf-8'),
+        logging.FileHandler('artifacts/bot.log', encoding='utf-8'),
         logging.StreamHandler()
     ]
 )
 logger = logging.getLogger(__name__)
-import logging
 
 def render_progressbar(percent, length=10):
     """Малює смужку: [████░░░░░░] 40%"""
@@ -65,9 +64,7 @@ def compress_video(input_path, total_duration, progress_callback=None):
         'ffmpeg', '-y',
         '-i', input_path,
         '-c:v', 'libx264',
-        
-        # --- НАЛАШТУВАННЯ ЯКОСТІ ---
-        '-preset', 'fast',  # 'fast' стискає якісніше, ніж 'veryfast'/'ultrafast'
+        '-preset', 'fast', 
     ]
 
     if video_bitrate_str:
@@ -127,7 +124,7 @@ def compress_video(input_path, total_duration, progress_callback=None):
         return None
 
     except Exception as e:
-        print(f"Помилка стиснення: {e}")
+        logger.error(f"Помилка стиснення: {e}")
         return None
 def instagram_download(id):
     L = instaloader.Instaloader()
@@ -249,9 +246,9 @@ def cleanup_insta_folder(folder_path):
         # Спочатку видаляємо всі .txt файли у папці
         try:
             txt_files = glob.glob(os.path.join(folder_path, "*.txt"))
-            print(f"Видаляємо .txt файли: {txt_files}")
+            logger.info(f"Видаляємо .txt файли: {txt_files}")
             for txt_file in txt_files:
-                print(f"Видаляємо файл: {txt_file}")
+                logger.info(f"Видаляємо файл: {txt_file}")
                 os.remove(txt_file)
         except Exception as e:
             logger.warning(f"Не вдалося видалити .txt файли: {e}")

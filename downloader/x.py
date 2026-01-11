@@ -1,5 +1,8 @@
 import requests
 from urllib.parse import urlparse
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', filename='artifacts/bot.log', filemode='a')
 
 def get_x_post_content(url: str):
     """
@@ -12,22 +15,26 @@ def get_x_post_content(url: str):
         "error": None
     }
     """
+    logging.info(f"Fetching X/Twitter content for URL: {url}")
     try:
         # 1. Парсимо URL, щоб отримати шлях
         parsed = urlparse(url)
         
         # Перевіряємо, чи це справді твіттер
         if "twitter.com" not in parsed.netloc and "x.com" not in parsed.netloc:
+            logging.warning(f"Invalid URL provided: {url}")
             return {"error": "Це не посилання на X/Twitter"}
 
         # 2. Формуємо запит до API vxTwitter
         # Логіка проста: міняємо x.com на api.vxtwitter.com
         # Це поверне нам чистий JSON замість HTML сайту
         api_url = f"https://api.vxtwitter.com{parsed.path}"
+        logging.debug(f"API URL: {api_url}")
 
         response = requests.get(api_url, timeout=10)
         
         if response.status_code != 200:
+            logging.error(f"Failed to fetch data from API. Status code: {response.status_code}, URL: {api_url}")
             return {"error": f"Не вдалося отримати дані. Код: {response.status_code}"}
 
         data = response.json()
@@ -49,6 +56,7 @@ def get_x_post_content(url: str):
         elif "media_urls" in data:
             media_urls = data["media_urls"]
 
+        logging.info(f"Successfully fetched content: author={author}, media_count={len(media_urls)}")
         return {
             "text": text,
             "media": media_urls,
@@ -57,6 +65,7 @@ def get_x_post_content(url: str):
         }
 
     except Exception as e:
+        logging.error(f"Error fetching X/Twitter content: {str(e)}")
         return {"error": f"Сталася помилка: {str(e)}"}
 
 # --- Приклад використання ---
