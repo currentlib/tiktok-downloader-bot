@@ -21,7 +21,7 @@ def voice(filepath):
         transcription = client.audio.transcriptions.create(
             model="whisper-1", 
             file=audio_file,
-            prompt="This is a conversation that may be in Ukrainian or English. Never use russian language!"
+            language="uk"
         )
 
     return transcription.text
