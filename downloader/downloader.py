@@ -150,7 +150,6 @@ def download_instagram_post(url):
     )
 
     # Витягуємо shortcode (ID поста)
-    # Посилання бувають: /p/CODE/ або /reel/CODE/
     try:
         if "/reel/" in url:
             shortcode = url.split("/reel/")[1].split("/")[0]
@@ -159,86 +158,115 @@ def download_instagram_post(url):
         elif "/tv/" in url:
             shortcode = url.split("/tv/")[1].split("/")[0]
         else:
-            # Спробуємо останній сегмент URL, якщо структура інша
             shortcode = url.strip("/").split("/")[-1]
     except:
         return {"error": "Не вдалося знайти ID поста в посиланні"}
 
-    # Папка для завантаження (instaloader завжди качає в папку)
     target_dir = ARTIFACTS_DIR / f"insta_{shortcode}"
 
-    try:
-        # Отримуємо об'єкт поста
-        post = instaloader.Post.from_shortcode(L.context, shortcode)
-        logger.info(f"Знайдено пост: {shortcode}")
-        
-        # Скачуємо
-        L.download_post(post, target=target_dir)
-        logger.info(f"Пост {shortcode} успішно скачано в папку {target_dir}")
+    # Helper function for yt-dlp fallback
+    def try_ytdl():
+        logger.info(f"Trying to download Instagram post via yt-dlp: {url}")
+        os.makedirs(target_dir, exist_ok=True)
+        filename = f"video_{uuid.uuid4().hex}"
+        ydl_opts = {
+            'format': 'bestvideo+bestaudio/best',
+            'outtmpl': str(target_dir / f"{filename}.%(ext)s"),
+            'quiet': True,
+            'noplaylist': True,
+            'merge_output_format': 'mp4',
+            'socket_timeout': 30,
+            'retries': 5,
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            downloaded_file = ydl.prepare_filename(info)
+            base, ext = os.path.splitext(downloaded_file)
+            if not os.path.exists(downloaded_file) and os.path.exists(base + ".mp4"):
+                downloaded_file = base + ".mp4"
+            
+            caption = info.get('description') or info.get('title') or "Instagram Post"
+            author = info.get('uploader') or info.get('uploader_id') or 'Unknown'
+            
+            return {
+                "type": "video",
+                "file_path": downloaded_file,
+                "caption": caption,
+                "author": author,
+                "folder_to_delete": target_dir
+            }
 
-        # Збираємо метадані
+    # Helper function for instaloader
+    def try_instaloader():
+        logger.info(f"Trying to download Instagram post via Instaloader: {shortcode}")
+        post = instaloader.Post.from_shortcode(L.context, shortcode)
+        L.download_post(post, target=target_dir)
+        
         caption = post.caption or "Instagram Post"
         author = post.owner_username
         
-        # Скануємо папку на наявність файлів
         all_files = glob.glob(os.path.join(target_dir, "*"))
-        logger.info(f"Знайдено файлів: {len(all_files)}")
-        
         video_files = [f for f in all_files if f.endswith(".mp4")]
         image_files = [f for f in all_files if f.endswith(".jpg") or f.endswith(".png")]
 
-        result = {}
-
-        # Сценарій 1: ВІДЕО
         if video_files:
-            # Instaloader може скачати кілька файлів, беремо найбільший (основне відео)
             main_video = max(video_files, key=os.path.getsize)
-            result = {
+            return {
                 "type": "video",
                 "file_path": main_video,
                 "caption": caption,
                 "author": author,
-                "folder_to_delete": target_dir # Важливо: папку треба потім видалити
+                "folder_to_delete": target_dir
             }
-            logger.info(f"Знайдено відео: {main_video}")
-
-        # Сценарій 2: СЛАЙДШОУ (Фото)
         elif image_files:
-            # Відфільтровуємо тамбнейли відео, якщо вони раптом потрапили
             valid_images = [img for img in image_files if "_video_thumb" not in img]
-            
-            # Якщо всі файли - тамбнейли відео, то це може бути пост з відео, але тільки з тамбнейлом
             if not valid_images and image_files:
-                # Якщо всі файли - тамбнейли, то це відео з тамбнейлом, повертаємо перший файл
-                result = {
+                return {
                     "type": "video",
                     "file_path": image_files[0],
                     "caption": caption,
                     "author": author,
                     "folder_to_delete": target_dir
                 }
-                logger.info(f"Знайдено відео з тамбнейлом: {image_files[0]}")
             else:
-                result = {
+                return {
                     "type": "photo",
                     "media_group": valid_images,
                     "caption": caption,
                     "author": author,
                     "folder_to_delete": target_dir
                 }
-                logger.info(f"Знайдено фото слайдшоу: {len(valid_images)} фото")
         else:
-            result = {"error": "Медіа файли не знайдено (можливо це просто текст?)"}
-            logger.warning("Медіа файли не знайдено")
+            raise Exception("No media files found after Instaloader download.")
 
-        return result
+    # Determine order based on URL type
+    is_reel = "/reel/" in url or "/reels/" in url
+    
+    if is_reel:
+        try:
+            return try_ytdl()
+        except Exception as e_ytdl:
+            logger.warning(f"yt-dlp failed for reel: {e_ytdl}. Trying Instaloader...")
+            try:
+                return try_instaloader()
+            except Exception as e_insta:
+                logger.error(f"Both methods failed. Instaloader error: {e_insta}")
+                if os.path.exists(target_dir):
+                    shutil.rmtree(target_dir, ignore_errors=True)
+                return {"error": f"Insta Error: {str(e_insta)}"}
+    else:
+        try:
+            return try_instaloader()
+        except Exception as e_insta:
+            logger.warning(f"Instaloader failed: {e_insta}. Trying yt-dlp fallback...")
+            try:
+                return try_ytdl()
+            except Exception as e_ytdl:
+                logger.error(f"Both methods failed. yt-dlp error: {e_ytdl}")
+                if os.path.exists(target_dir):
+                    shutil.rmtree(target_dir, ignore_errors=True)
+                return {"error": f"Insta Error: {str(e_insta)}"}
 
-    except Exception as e:
-        # Якщо сталася помилка, пробуємо видалити папку, щоб не смітити
-        logger.error(f"Помилка при скачуванні Instagram поста: {str(e)}")
-        if os.path.exists(target_dir):
-            shutil.rmtree(target_dir, ignore_errors=True)
-        return {"error": f"Insta Error: {str(e)}"}
 
 def cleanup_insta_folder(folder_path):
     """Видаляє папку з файлами після відправки"""
