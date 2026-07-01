@@ -14,8 +14,13 @@ import shutil
 import glob
 import logging
 from pathlib import Path
+import configparser
+
+config = configparser.ConfigParser()
+config.read('config.ini')
 
 ARTIFACTS_DIR = Path("artifacts")
+
 
 
 # Налаштування логування
@@ -178,6 +183,13 @@ def download_instagram_post(url):
             'socket_timeout': 30,
             'retries': 5,
         }
+        if config.has_section('Downloader'):
+            cookies_from_browser = config.get('Downloader', 'instagram_cookies_from_browser', fallback=None)
+            cookies_file = config.get('Downloader', 'instagram_cookies_file', fallback=None)
+            if cookies_from_browser:
+                ydl_opts['cookiesfrombrowser'] = cookies_from_browser
+            elif cookies_file:
+                ydl_opts['cookiefile'] = cookies_file
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             downloaded_file = ydl.prepare_filename(info)
@@ -305,6 +317,13 @@ def download_video_local(url: str):
         # Для TikTok/Insta іноді потрібні хедери, yt-dlp зазвичай справляється,
         # але іноді краще додати user-agent (опціонально)
     }
+    if config.has_section('Downloader'):
+        cookies_from_browser = config.get('Downloader', 'instagram_cookies_from_browser', fallback=None)
+        cookies_file = config.get('Downloader', 'instagram_cookies_file', fallback=None)
+        if cookies_from_browser:
+            ydl_opts['cookiesfrombrowser'] = cookies_from_browser
+        elif cookies_file:
+            ydl_opts['cookiefile'] = cookies_file
 
     try:
         logger.info(f"Починаємо завантаження відео з URL: {url}")
